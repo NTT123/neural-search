@@ -10,6 +10,7 @@ import tensorflow as tf
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
 
+from dataloader import get_ds
 from model import MsNet
 
 #### INIT DISTRIBUTED TRAINING ####
@@ -64,50 +65,6 @@ ctx = (
 )
 if RANK == 0:
     print(dtype, ptdtype, ctx)
-
-
-def get_ds(batch_size: int, split="train", repeat=False, rank=0, world_size=1, seed=0):
-    import tensorflow as tf
-
-    tf.config.set_visible_devices([], "GPU")
-
-    files = tf.data.Dataset.list_files(f"data/{split}/*.tfrecord", shuffle=False)
-    L = len(files)
-    if repeat:
-        files = files.repeat().shuffle(L, seed=seed)
-    else:
-        files = files.shuffle(L, seed=seed)
-    files = files.shard(world_size, rank)
-    files = files.repeat().shuffle(L // WORLD_SIZE)
-    dataset = tf.data.TFRecordDataset(files, num_parallel_reads=4)
-    feature_description = {
-        "query": tf.io.FixedLenFeature([], tf.string),
-        "passage": tf.io.FixedLenFeature([], tf.string),
-        "passage_id": tf.io.FixedLenFeature([], tf.int64),
-    }
-
-    def _parse_function(example_proto):
-        parsed_example = tf.io.parse_single_example(example_proto, feature_description)
-        parsed_example["query"] = tf.reshape(
-            tf.io.parse_tensor(parsed_example["query"], out_type=tf.int32), [-1]
-        )
-        parsed_example["passage"] = tf.reshape(
-            tf.io.parse_tensor(parsed_example["passage"], out_type=tf.int32), [-1]
-        )
-        del parsed_example["passage_id"]
-        return parsed_example
-
-    dataset = (
-        dataset.map(_parse_function, num_parallel_calls=4, deterministic=True)
-        .shuffle(100 * batch_size)
-        .padded_batch(
-            batch_size,
-            padded_shapes={"query": [32], "passage": [256]},
-            drop_remainder=True,
-        )
-        .prefetch(1)
-    )
-    return dataset
 
 
 net = MsNet(FLAGS.base_model).to("cuda")
@@ -174,13 +131,25 @@ def loss_fn(net, query, passage):
 
 
 eval_dataset = get_ds(
-    batch_size, "validation", repeat=False, rank=RANK, world_size=WORLD_SIZE, seed=0
+    batch_size,
+    "validation",
+    rank=RANK,
+    world_size=WORLD_SIZE,
+    seed=0,
+    repeat=True,
+    drop_remainder=True,
 )
 
 eval_iter = eval_dataset.as_numpy_iterator()
 
 dataset = get_ds(
-    batch_size, "train", repeat=False, rank=RANK, world_size=WORLD_SIZE, seed=step
+    batch_size,
+    "train",
+    rank=RANK,
+    world_size=WORLD_SIZE,
+    seed=step,
+    repeat=True,
+    drop_remainder=True,
 )
 train_iter = dataset.as_numpy_iterator()
 if RANK == 0:

@@ -6,19 +6,24 @@ tf.config.set_visible_devices([], "GPU")
 def get_ds(
     batch_size: int,
     split="train",
-    repeat=True,
     rank=0,
     world_size=1,
     seed=0,
     drop_remainder=True,
+    keep_passage_id=False,
+    repeat=True,
 ):
+    import tensorflow as tf
+
+    tf.config.set_visible_devices([], "GPU")
+
     files = tf.data.Dataset.list_files(f"data/{split}/*.tfrecord", shuffle=False)
     L = len(files)
-    if repeat:
-        files = files.repeat().shuffle(L, seed=seed)
-    else:
-        files = files.shuffle(L, seed=seed)
+    files = files.shuffle(L, seed=seed)
     files = files.shard(world_size, rank)
+    if repeat:
+        files = files.repeat()
+    files = files.shuffle(L // world_size)
     dataset = tf.data.TFRecordDataset(files, num_parallel_reads=4)
     feature_description = {
         "query": tf.io.FixedLenFeature([], tf.string),
@@ -34,15 +39,19 @@ def get_ds(
         parsed_example["passage"] = tf.reshape(
             tf.io.parse_tensor(parsed_example["passage"], out_type=tf.int32), [-1]
         )
-        # del parsed_example["passage_id"]
+        if not keep_passage_id:
+            del parsed_example["passage_id"]
         return parsed_example
 
+    pad_shapes = ({"query": [32], "passage": [256], "passage_id": []},)
+    if not keep_passage_id:
+        del pad_shapes["passage_id"]
     dataset = (
         dataset.map(_parse_function, num_parallel_calls=4, deterministic=True)
         .shuffle(100 * batch_size)
         .padded_batch(
             batch_size,
-            padded_shapes={"query": [32], "passage": [256], "passage_id": []},
+            padded_shapes=pad_shapes,
             drop_remainder=drop_remainder,
         )
         .prefetch(1)
