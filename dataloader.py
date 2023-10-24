@@ -43,7 +43,7 @@ def get_ds(
             del parsed_example["passage_id"]
         return parsed_example
 
-    pad_shapes = ({"query": [32], "passage": [256], "passage_id": []},)
+    pad_shapes = {"query": [32], "passage": [256], "passage_id": []}
     if not keep_passage_id:
         del pad_shapes["passage_id"]
     dataset = (
