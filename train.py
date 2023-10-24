@@ -112,9 +112,7 @@ class MyAllGather(torch.autograd.Function):
         return all_gradients[RANK]
 
 
-def loss_fn(net, query, passage):
-    query, passage = net(query, passage)
-
+def query_passage_loss(query, passage):
     if WORLD_SIZE > 1:
         all_passages = [torch.empty_like(passage) for _ in range(WORLD_SIZE)]
         all_passages = MyAllGather.apply(passage)
@@ -128,6 +126,25 @@ def loss_fn(net, query, passage):
     )
     loss = torch.nn.functional.cross_entropy(logits, target)
     return loss
+
+def passage_query_loss(passage, query):
+    if WORLD_SIZE > 1:
+        all_queries = [torch.empty_like(query) for _ in range(WORLD_SIZE)]
+        all_queries = MyAllGather.apply(query)
+        all_queries = torch.concat(all_queries, dim=0)
+    else:
+        all_queries = query
+
+    logits = torch.einsum("AD,BD->AB", passage, all_queries) * 100
+    target = (
+        torch.arange(0, logits.shape[0], device=logits.device) + RANK * passage.shape[0]
+    )
+    loss = torch.nn.functional.cross_entropy(logits, target)
+    return loss
+
+def loss_fn(net, query, passage):
+    query, passage = net(query, passage)
+    return query_passage_loss(query, passage) + passage_query_loss(passage, query)
 
 
 eval_dataset = get_ds(
