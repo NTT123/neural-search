@@ -28,7 +28,7 @@ def get_ds(
     feature_description = {
         "query": tf.io.FixedLenFeature([], tf.string),
         "passage": tf.io.FixedLenFeature([], tf.string),
-        "passage_id": tf.io.VarLenFeature([], tf.int64),
+        "passage_id": tf.io.VarLenFeature(tf.int64),
     }
 
     def _parse_function(example_proto):
