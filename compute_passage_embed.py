@@ -21,7 +21,6 @@ else:
 
 parser = ArgumentParser()
 parser.add_argument("--seed", type=int, default=42)
-parser.add_argument("--embed-dim", type=int, default=256)
 parser.add_argument("--batch-size", type=int, default=256)
 parser.add_argument("--base-model", type=str, default="google/t5-v1_1-small")
 parser.add_argument("--ckpt", type=str, required=True)
@@ -56,7 +55,7 @@ print(dtype, ptdtype, ctx)
 
 
 device = FLAGS.device
-net = MsNet(FLAGS.base_model, FLAGS.embed_dim).to(device)
+net = MsNet(FLAGS.base_model).to(device)
 net.eval()
 net_bak = net
 

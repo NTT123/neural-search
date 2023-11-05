@@ -28,7 +28,7 @@ def get_ds(
     feature_description = {
         "query": tf.io.FixedLenFeature([], tf.string),
         "passage": tf.io.FixedLenFeature([], tf.string),
-        "passage_id": tf.io.FixedLenFeature([], tf.int64),
+        "passage_id": tf.io.VarLenFeature([], tf.int64),
     }
 
     def _parse_function(example_proto):
@@ -39,11 +39,13 @@ def get_ds(
         parsed_example["passage"] = tf.reshape(
             tf.io.parse_tensor(parsed_example["passage"], out_type=tf.int32), [-1]
         )
+        parsed_example['passage_id'] = tf.reshape(tf.sparse.to_dense(parsed_example['passage_id']), [-1])
+
         if not keep_passage_id:
             del parsed_example["passage_id"]
         return parsed_example
 
-    pad_shapes = {"query": [32], "passage": [256], "passage_id": []}
+    pad_shapes = {"query": [32], "passage": [256], "passage_id": [10]}
     if not keep_passage_id:
         del pad_shapes["passage_id"]
     dataset = (
